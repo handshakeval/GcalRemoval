@@ -1,0 +1,55 @@
+import os
+import time
+import json
+import requests
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+
+# Google Calendar API credentials (Service Account)
+SERVICE_ACCOUNT_FILE = 'path_to_service_account_file.json'
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+# Group and Calendar information
+GROUP_EMAIL = 'group_email@example.com'
+CALENDAR_IDS = ['calendar_id_1', 'calendar_id_2']  # Add the relevant calendar IDs here
+
+# Slack webhook configuration
+SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK/URL'
+
+# Check interval in seconds
+CHECK_INTERVAL = 60
+
+# Initialize Google Calendar API client
+credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+calendar_service = build('calendar', 'v3', credentials=credentials)
+
+def send_slack_notification(message):
+    payload = {
+        'text': message
+    }
+    response = requests.post(SLACK_WEBHOOK_URL, json.dumps(payload))
+    if response.status_code != 200:
+        print(f'Failed to send Slack notification: {response.text}')
+
+def check_calendar_permissions():
+    try:
+        for calendar_id in CALENDAR_IDS:
+            calendar_acl = calendar_service.acl().list(calendarId=calendar_id).execute()
+            for rule in calendar_acl.get('items', []):
+                if rule.get('scope', {}).get('type') == 'group' and rule.get('scope', {}).get('email') == GROUP_EMAIL:
+                    return True
+    except Exception as e:
+        print(f'An error occurred while checking calendar permissions: {e}')
+    return False
+
+def main():
+    while True:
+        if not check_calendar_permissions():
+            message = f'The Google Group {GROUP_EMAIL} was removed from the calendar permissions.'
+            send_slack_notification(message)
+            print(message)
+            break
+        time.sleep(CHECK_INTERVAL)
+
+if __name__ == '__main__':
+    main()
